@@ -89,7 +89,14 @@
     max-width: 90vw; /* Ensure popup doesn't get too wide */
     max-height: 90vh; /* Ensure popup doesn't get too tall */
     overflow-y: auto; /* Add scroll if content exceeds max height */
+    cursor: grab; /* Add 'grab' cursor to indicate it's movable */
 }
+
+/* Change cursor to 'grabbing' when actively moving */
+#qs-capture-popup:active {
+    cursor: grabbing;
+}
+
 
 /* Image Preview Styling */
 #qs-preview-image {
@@ -99,6 +106,7 @@
     border-radius: 8px;
     margin-bottom: 15px; /* Space between preview and buttons */
     object-fit: contain; /* Ensure image aspect ratio is maintained */
+    pointer-events: none; /* Prevent image from being dragged itself, allowing popup drag */
 }
 
 /* Container for Copy/Save buttons in the popup */

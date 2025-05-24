@@ -3,13 +3,13 @@
 (() => {
     // Ensure the script runs only once or can clean up previous instances
     if (window.screenshotExtensionActive) {
-        // If UI is already active, perhaps toggle it or re-initialize.
-        // For now, let's remove existing UI and recreate for a clean state.
         const existingOverlay = document.getElementById('qs-overlay');
         if (existingOverlay) existingOverlay.remove();
         const existingPopup = document.getElementById('qs-capture-popup');
         if (existingPopup) existingPopup.remove();
         document.removeEventListener('keydown', handleGlobalEscKey);
+        // Make sure to remove click outside listener if it was somehow left active
+        document.removeEventListener('click', handleClickOutsidePopupGlobal);
     }
     window.screenshotExtensionActive = true;
 
@@ -26,13 +26,15 @@
     let selectionBox = null;
     let startX, startY, isSelecting = false;
     let currentDevicePixelRatio = window.devicePixelRatio || 1;
+    let activePopup = null; // Keep track of the active popup
 
     // --- Main Overlay and Initial Buttons ---
     function createOverlay() {
-        if (document.getElementById('qs-overlay')) return; // Already exists
+        if (document.getElementById('qs-overlay')) return;
 
         overlay = document.createElement('div');
         overlay.id = 'qs-overlay';
+        overlay.style.display = 'flex';
 
         mainButtonsContainer = document.createElement('div');
         mainButtonsContainer.id = 'qs-main-buttons-container';
@@ -45,6 +47,7 @@
         overlay.appendChild(mainButtonsContainer);
         document.body.appendChild(overlay);
 
+        // Global keydown listener for Esc, active as long as any part of the extension UI is up
         document.addEventListener('keydown', handleGlobalEscKey);
     }
 
@@ -62,12 +65,55 @@
         }
     }
 
+    // --- Draggable Logic ---
+    function makeDraggable(popupElement) { // Renamed parameter for clarity
+        let offsetX, offsetY, isDragging = false;
+
+        popupElement.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.qs-button')) {
+                return;
+            }
+
+            isDragging = true;
+            const rect = popupElement.getBoundingClientRect();
+            if (getComputedStyle(popupElement).transform !== 'none') {
+                popupElement.style.transform = 'none';
+                popupElement.style.left = `${rect.left}px`;
+                popupElement.style.top = `${rect.top}px`;
+            }
+
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+
+            popupElement.style.cursor = 'grabbing';
+            popupElement.style.userSelect = 'none';
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp, { once: true });
+        });
+
+        function onMouseMove(e) {
+            if (!isDragging) return;
+            popupElement.style.left = `${e.clientX - offsetX}px`;
+            popupElement.style.top = `${e.clientY - offsetY}px`;
+        }
+
+        function onMouseUp() {
+            isDragging = false;
+            popupElement.style.cursor = 'grab';
+            popupElement.style.userSelect = 'auto';
+            document.removeEventListener('mousemove', onMouseMove);
+        }
+    }
+
     // --- Area Selection Logic ---
     function handleSelectAreaClick() {
         if (mainButtonsContainer) mainButtonsContainer.style.display = 'none';
-        overlay.style.cursor = 'crosshair';
-        overlay.addEventListener('mousedown', handleMouseDown);
-        overlay.style.pointerEvents = 'auto';
+        if (overlay) {
+            overlay.style.cursor = 'crosshair';
+            overlay.addEventListener('mousedown', handleMouseDown);
+            overlay.style.pointerEvents = 'auto';
+        }
     }
 
     function handleMouseDown(event) {
@@ -81,7 +127,7 @@
         selectionBox.id = 'qs-selection-box';
         selectionBox.style.left = startX + 'px';
         selectionBox.style.top = startY + 'px';
-        overlay.appendChild(selectionBox);
+        if (overlay) overlay.appendChild(selectionBox);
 
         document.addEventListener('mousemove', handleMouseMove);
         document.addEventListener('mouseup', handleMouseUp);
@@ -97,20 +143,21 @@
         const newX = Math.min(currentX, startX);
         const newY = Math.min(currentY, startY);
 
-        selectionBox.style.left = newX + 'px';
-        selectionBox.style.top = newY + 'px';
-        selectionBox.style.width = width + 'px';
-        selectionBox.style.height = height + 'px';
+        if (selectionBox) {
+            selectionBox.style.left = newX + 'px';
+            selectionBox.style.top = newY + 'px';
+            selectionBox.style.width = width + 'px';
+            selectionBox.style.height = height + 'px';
+        }
     }
 
     function handleMouseUp(event) {
         if (!isSelecting) return;
         isSelecting = false;
-        overlay.style.cursor = 'default';
+        if (overlay) overlay.style.cursor = 'default';
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
-        overlay.removeEventListener('mousedown', handleMouseDown);
-
+        if (overlay) overlay.removeEventListener('mousedown', handleMouseDown);
 
         const x = Math.min(event.clientX, startX);
         const y = Math.min(event.clientY, startY);
@@ -127,19 +174,31 @@
                 width: width,
                 height: height
             };
+
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
+
             chrome.runtime.sendMessage({
                 action: "captureVisibleTab",
                 cropRect: cropRect,
                 devicePixelRatio: currentDevicePixelRatio
             });
         } else {
-            if (mainButtonsContainer) mainButtonsContainer.style.display = 'flex';
+            if (mainButtonsContainer && overlay && overlay.style.display !== 'none') {
+                 mainButtonsContainer.style.display = 'flex';
+            } else if (!overlay || overlay.style.display === 'none') {
+                cleanup();
+            }
         }
     }
 
     // --- Full Page Capture Logic ---
     function handleCaptureFullPageClick() {
-        if (mainButtonsContainer) mainButtonsContainer.style.display = 'none';
+        if (overlay) {
+            overlay.style.display = 'none';
+        }
+
         chrome.runtime.sendMessage({
              action: "captureVisibleTab",
              devicePixelRatio: currentDevicePixelRatio
@@ -150,6 +209,7 @@
     function processCapturedImage(dataUrl, cropRect, devicePixelRatio) {
         const img = new Image();
         img.onload = () => {
+            let finalDataUrl = dataUrl;
             if (cropRect && cropRect.width > 0 && cropRect.height > 0) {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
@@ -167,15 +227,19 @@
                     0, 0,
                     canvas.width, canvas.height
                 );
-                const croppedDataUrl = canvas.toDataURL('image/png');
-                showCapturePopup(croppedDataUrl, 'selected_area.png');
+                finalDataUrl = canvas.toDataURL('image/png');
+                showCapturePopup(finalDataUrl, 'selected_area.png');
             } else {
-                showCapturePopup(dataUrl, 'full_page_screenshot.png');
+                showCapturePopup(finalDataUrl, 'full_page_screenshot.png');
             }
         };
         img.onerror = () => {
             console.error("Quick Screenshot: Failed to load captured image for processing.");
-            alert("Error: Could not load the captured image."); // Consider replacing alert with a custom modal
+            const userFriendlyError = document.createElement('div');
+            userFriendlyError.textContent = "Error: Failed to load captured image.";
+            userFriendlyError.style.cssText = "position:fixed; top:10px; left:10px; background:red; color:white; padding:10px; z-index: 2147483647;";
+            document.body.appendChild(userFriendlyError);
+            setTimeout(() => userFriendlyError.remove(), 3000);
             cleanup();
         }
         img.src = dataUrl;
@@ -183,44 +247,64 @@
 
     // --- Capture Popup (Preview/Copy/Save) ---
     function showCapturePopup(imageDataUrl, filename) {
-        if (overlay) overlay.style.display = 'none';
+        if (overlay && overlay.style.display !== 'none') {
+             overlay.style.display = 'none';
+        }
 
-        const popup = document.createElement('div');
-        popup.id = 'qs-capture-popup';
+        // Remove any existing popup before creating a new one
+        if(activePopup) activePopup.remove();
 
-        // Create image preview element
+        activePopup = document.createElement('div'); // Assign to activePopup
+        activePopup.id = 'qs-capture-popup';
+
         const previewImage = document.createElement('img');
         previewImage.id = 'qs-preview-image';
         previewImage.src = imageDataUrl;
-        popup.appendChild(previewImage); // Add preview image first
+        previewImage.ondragstart = () => false;
+        activePopup.appendChild(previewImage);
 
-        // Create a container for action buttons
         const actionsContainer = document.createElement('div');
         actionsContainer.id = 'qs-popup-actions';
 
-        const copyButton = createButton("Copy", ICONS.copy, () => copyImageToClipboard(imageDataUrl, popup));
+        const copyButton = createButton("Copy", ICONS.copy, () => copyImageToClipboard(imageDataUrl, activePopup));
         const saveButton = createButton("Save", ICONS.save, () => saveImage(imageDataUrl, filename));
 
         actionsContainer.appendChild(copyButton);
         actionsContainer.appendChild(saveButton);
-        popup.appendChild(actionsContainer); // Add buttons container
+        activePopup.appendChild(actionsContainer);
 
         const message = document.createElement('p');
         message.id = 'qs-popup-message';
-        popup.appendChild(message); // Add message element last
+        activePopup.appendChild(message);
 
-        document.body.appendChild(popup);
+        document.body.appendChild(activePopup);
+
+        makeDraggable(activePopup);
+
+        // Add listener for clicks outside the popup
+        // Use a named function for easy removal
+        setTimeout(() => { // Add a slight delay to prevent immediate closing if click triggered this
+            document.addEventListener('click', handleClickOutsidePopupGlobal, { capture: true });
+        }, 0);
     }
 
-    async function copyImageToClipboard(imageDataUrl, popup) {
-        const messageEl = popup.querySelector('#qs-popup-message');
+    // Named function to handle clicks outside the popup
+    function handleClickOutsidePopupGlobal(event) {
+        if (activePopup && !activePopup.contains(event.target)) {
+            cleanup();
+        }
+    }
+
+
+    async function copyImageToClipboard(imageDataUrl, popupElement) { // Renamed parameter
+        const messageEl = popupElement.querySelector('#qs-popup-message');
         try {
             const blob = await dataURLtoBlob(imageDataUrl);
             await navigator.clipboard.write([
                 new ClipboardItem({ [blob.type]: blob })
             ]);
             if (messageEl) messageEl.textContent = 'Copied to clipboard!';
-            setTimeout(cleanup, 1500);
+            setTimeout(cleanup, 1500); // Cleanup after success
         } catch (err) {
             console.error('Quick Screenshot: Failed to copy image to clipboard:', err);
             if (messageEl) messageEl.textContent = 'Copy failed. Try saving.';
@@ -238,25 +322,26 @@
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        cleanup();
+        cleanup(); // Cleanup after saving
     }
 
     // --- Cleanup ---
     function cleanup() {
         if (selectionBox) selectionBox.remove();
         if (overlay) overlay.remove();
-        const existingPopup = document.getElementById('qs-capture-popup');
-        if (existingPopup) existingPopup.remove();
+        if (activePopup) activePopup.remove(); // Remove the active popup
 
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener('mousemove', handleMouseMove); // Though these are more specific to selection
+        document.removeEventListener('mouseup', handleMouseUp);     // it's good to be thorough
+
+        // Always remove global listeners during cleanup
         document.removeEventListener('keydown', handleGlobalEscKey);
-        if(overlay) overlay.removeEventListener('mousedown', handleMouseDown);
-
+        document.removeEventListener('click', handleClickOutsidePopupGlobal, { capture: true });
 
         selectionBox = null;
         overlay = null;
         mainButtonsContainer = null;
+        activePopup = null; // Reset active popup
         isSelecting = false;
         window.screenshotExtensionActive = false;
     }
@@ -264,10 +349,8 @@
     // --- Message Listener (from background.js) ---
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.action === "showOverlay") {
-            const oldOverlay = document.getElementById('qs-overlay');
-            if (oldOverlay) oldOverlay.remove();
-            const oldPopup = document.getElementById('qs-capture-popup');
-            if (oldPopup) oldPopup.remove();
+            cleanup();
+            window.screenshotExtensionActive = true;
 
             currentDevicePixelRatio = window.devicePixelRatio || 1;
             createOverlay();
@@ -278,7 +361,6 @@
                 sendResponse({ status: "Image processing started" });
             } else {
                 console.error("Quick Screenshot: No dataUrl received for processing.");
-                // Consider replacing alert with a custom modal for better UX
                 const userFriendlyError = document.createElement('div');
                 userFriendlyError.textContent = "Error: Failed to receive captured image data.";
                 userFriendlyError.style.cssText = "position:fixed; top:10px; left:10px; background:red; color:white; padding:10px; z-index: 2147483647;";
