@@ -67,12 +67,10 @@
         if (mainButtonsContainer) mainButtonsContainer.style.display = 'none';
         overlay.style.cursor = 'crosshair';
         overlay.addEventListener('mousedown', handleMouseDown);
-        // Prevent interaction with page elements underneath the overlay during selection
         overlay.style.pointerEvents = 'auto';
     }
 
     function handleMouseDown(event) {
-        // Prevent mousedown from triggering on buttons if they were somehow still active
         if (event.target !== overlay) return;
 
         isSelecting = true;
@@ -122,22 +120,19 @@
         if (selectionBox) selectionBox.remove();
         selectionBox = null;
 
-        if (width > 5 && height > 5) { // Minimum selection size
-            // Adjust for scroll position
+        if (width > 5 && height > 5) {
             const cropRect = {
                 x: x + window.scrollX,
                 y: y + window.scrollY,
                 width: width,
                 height: height
             };
-            // Request capture from background script
             chrome.runtime.sendMessage({
                 action: "captureVisibleTab",
                 cropRect: cropRect,
                 devicePixelRatio: currentDevicePixelRatio
             });
         } else {
-            // Selection too small, reset UI or show message
             if (mainButtonsContainer) mainButtonsContainer.style.display = 'flex';
         }
     }
@@ -145,10 +140,9 @@
     // --- Full Page Capture Logic ---
     function handleCaptureFullPageClick() {
         if (mainButtonsContainer) mainButtonsContainer.style.display = 'none';
-        // Request capture from background script, no cropRect needed for full page
         chrome.runtime.sendMessage({
              action: "captureVisibleTab",
-             devicePixelRatio: currentDevicePixelRatio // Still send DPR for consistency if needed later
+             devicePixelRatio: currentDevicePixelRatio
         });
     }
 
@@ -157,61 +151,64 @@
         const img = new Image();
         img.onload = () => {
             if (cropRect && cropRect.width > 0 && cropRect.height > 0) {
-                // Crop the image
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
-
-                // Adjust crop coordinates and dimensions for devicePixelRatio
-                // The captured image (dataUrl) is already at devicePixelRatio resolution.
-                // The cropRect coordinates are in CSS pixels.
-                const dpr = devicePixelRatio || currentDevicePixelRatio; // Use passed DPR or current
+                const dpr = devicePixelRatio || currentDevicePixelRatio;
 
                 canvas.width = cropRect.width * dpr;
                 canvas.height = cropRect.height * dpr;
 
-                // The source x,y for drawImage should also be scaled by DPR
-                // as cropRect was relative to the viewport in CSS pixels.
                 ctx.drawImage(
                     img,
-                    cropRect.x * dpr, // sourceX
-                    cropRect.y * dpr, // sourceY
-                    cropRect.width * dpr, // sourceWidth
-                    cropRect.height * dpr, // sourceHeight
-                    0, 0, // destinationX, destinationY
-                    canvas.width, canvas.height // destinationWidth, destinationHeight
+                    cropRect.x * dpr,
+                    cropRect.y * dpr,
+                    cropRect.width * dpr,
+                    cropRect.height * dpr,
+                    0, 0,
+                    canvas.width, canvas.height
                 );
                 const croppedDataUrl = canvas.toDataURL('image/png');
                 showCapturePopup(croppedDataUrl, 'selected_area.png');
             } else {
-                // Full page capture, use dataUrl directly
                 showCapturePopup(dataUrl, 'full_page_screenshot.png');
             }
         };
         img.onerror = () => {
             console.error("Quick Screenshot: Failed to load captured image for processing.");
-            alert("Error: Could not load the captured image.");
+            alert("Error: Could not load the captured image."); // Consider replacing alert with a custom modal
             cleanup();
         }
         img.src = dataUrl;
     }
 
-    // --- Capture Popup (Copy/Save) ---
+    // --- Capture Popup (Preview/Copy/Save) ---
     function showCapturePopup(imageDataUrl, filename) {
-        // Remove main overlay now that we have the image
-        if (overlay) overlay.style.display = 'none'; // Hide instead of remove, cleanup will handle removal
+        if (overlay) overlay.style.display = 'none';
 
         const popup = document.createElement('div');
         popup.id = 'qs-capture-popup';
 
+        // Create image preview element
+        const previewImage = document.createElement('img');
+        previewImage.id = 'qs-preview-image';
+        previewImage.src = imageDataUrl;
+        popup.appendChild(previewImage); // Add preview image first
+
+        // Create a container for action buttons
+        const actionsContainer = document.createElement('div');
+        actionsContainer.id = 'qs-popup-actions';
+
         const copyButton = createButton("Copy", ICONS.copy, () => copyImageToClipboard(imageDataUrl, popup));
         const saveButton = createButton("Save", ICONS.save, () => saveImage(imageDataUrl, filename));
 
+        actionsContainer.appendChild(copyButton);
+        actionsContainer.appendChild(saveButton);
+        popup.appendChild(actionsContainer); // Add buttons container
+
         const message = document.createElement('p');
         message.id = 'qs-popup-message';
+        popup.appendChild(message); // Add message element last
 
-        popup.appendChild(copyButton);
-        popup.appendChild(saveButton);
-        popup.appendChild(message);
         document.body.appendChild(popup);
     }
 
@@ -227,7 +224,6 @@
         } catch (err) {
             console.error('Quick Screenshot: Failed to copy image to clipboard:', err);
             if (messageEl) messageEl.textContent = 'Copy failed. Try saving.';
-            // Don't cleanup immediately on error, let user save
         }
     }
 
@@ -239,7 +235,7 @@
         const a = document.createElement('a');
         a.href = imageDataUrl;
         a.download = filename;
-        document.body.appendChild(a); // Required for Firefox
+        document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         cleanup();
@@ -262,19 +258,18 @@
         overlay = null;
         mainButtonsContainer = null;
         isSelecting = false;
-        window.screenshotExtensionActive = false; // Allow re-activation
+        window.screenshotExtensionActive = false;
     }
 
     // --- Message Listener (from background.js) ---
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.action === "showOverlay") {
-            // If an old overlay exists from a previous, uncleaned state, remove it.
             const oldOverlay = document.getElementById('qs-overlay');
             if (oldOverlay) oldOverlay.remove();
             const oldPopup = document.getElementById('qs-capture-popup');
             if (oldPopup) oldPopup.remove();
 
-            currentDevicePixelRatio = window.devicePixelRatio || 1; // Update DPR
+            currentDevicePixelRatio = window.devicePixelRatio || 1;
             createOverlay();
             sendResponse({ status: "Overlay shown" });
         } else if (request.action === "processCapturedImage") {
@@ -283,12 +278,17 @@
                 sendResponse({ status: "Image processing started" });
             } else {
                 console.error("Quick Screenshot: No dataUrl received for processing.");
-                alert("Error: Failed to receive captured image data.");
+                // Consider replacing alert with a custom modal for better UX
+                const userFriendlyError = document.createElement('div');
+                userFriendlyError.textContent = "Error: Failed to receive captured image data.";
+                userFriendlyError.style.cssText = "position:fixed; top:10px; left:10px; background:red; color:white; padding:10px; z-index: 2147483647;";
+                document.body.appendChild(userFriendlyError);
+                setTimeout(() => userFriendlyError.remove(), 3000);
                 cleanup();
                 sendResponse({ error: "No dataUrl" });
             }
         }
-        return true; // Keep message channel open for async response if needed
+        return true;
     });
 
-})(); // IIFE to encapsulate the script
+})();

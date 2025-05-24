@@ -1,0 +1,125 @@
+/* style.css */
+
+/* Overlay */
+#qs-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent black */
+    z-index: 2147483640; /* High z-index */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: default; /* Default cursor for overlay, changes for selection */
+    pointer-events: auto; /* Initially allow clicks for buttons */
+}
+
+/* Main Buttons Container */
+#qs-main-buttons-container {
+    display: flex;
+    gap: 20px; /* Space between buttons */
+    padding: 20px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    z-index: 2147483641; /* Above overlay backdrop */
+}
+
+/* General Button Styling */
+.qs-button {
+    display: flex;
+    align-items: center;
+    gap: 8px; /* Space between icon and text */
+    padding: 12px 20px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    font-weight: 500;
+    color: #333;
+    background-color: #f0f0f0;
+    border: 1px solid #cccccc;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    outline: none;
+}
+
+.qs-button:hover {
+    background-color: #e0e0e0;
+    border-color: #bbbbbb;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.qs-button:active {
+    background-color: #d0d0d0;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.qs-button svg {
+    width: 20px; /* Consistent icon size */
+    height: 20px;
+    fill: currentColor;
+}
+
+/* Selection Box */
+#qs-selection-box {
+    position: fixed; /* Relative to viewport */
+    border: 2px dashed #007bff; /* Dashed blue border */
+    background-color: rgba(0, 123, 255, 0.1); /* Light blue semi-transparent fill */
+    z-index: 2147483642; /* Above overlay, below potential popups */
+    pointer-events: none; /* Allow clicks to pass through to overlay for mouseup */
+}
+
+/* Capture Popup (for Copy/Save) */
+#qs-capture-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 25px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    z-index: 2147483647; /* Highest z-index */
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    align-items: center;
+    max-width: 90vw; /* Ensure popup doesn't get too wide */
+    max-height: 90vh; /* Ensure popup doesn't get too tall */
+    overflow-y: auto; /* Add scroll if content exceeds max height */
+}
+
+/* Image Preview Styling */
+#qs-preview-image {
+    max-width: 100%; /* Make image responsive within the popup */
+    max-height: 400px; /* Limit max height of the preview */
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    margin-bottom: 15px; /* Space between preview and buttons */
+    object-fit: contain; /* Ensure image aspect ratio is maintained */
+}
+
+/* Container for Copy/Save buttons in the popup */
+#qs-popup-actions {
+    display: flex;
+    gap: 15px; /* Space between copy and save buttons */
+    width: 100%;
+    justify-content: center;
+}
+
+
+#qs-capture-popup .qs-button {
+    min-width: 100px; /* Adjust min-width if necessary */
+    justify-content: center;
+}
+
+#qs-popup-message {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    color: #007bff; /* Blue for success messages */
+    margin-top: 5px;
+    min-height: 20px; /* Reserve space for message */
+    text-align: center;
+}
