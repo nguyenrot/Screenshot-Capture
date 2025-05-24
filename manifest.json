@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Quick Screenshot Capture",
+  "version": "1.0",
+  "description": "Capture full page or selected area screenshots with copy and save options.",
+  "permissions": [
+      "activeTab",
+      "scripting",
+      "clipboardWrite"
+  ],
+  "host_permissions": [
+      "<all_urls>"
+  ],
+  "action": {
+      "default_title": "Capture Screenshot"
+  },
+  "background": {
+      "service_worker": "background.js"
+  },
+  "commands": {
+      "activate_screenshot_mode": {
+          "suggested_key": {
+              "default": "Alt+S",
+              "mac": "Alt+S"
+          },
+          "description": "Activate Screenshot Mode"
+      }
+  },
+  "icons": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+  }
+}
