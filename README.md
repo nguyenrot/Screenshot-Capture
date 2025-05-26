@@ -54,6 +54,7 @@ A simple yet powerful Chrome extension for capturing screenshots of web pages. C
 ## File Structure
 
 
+```
 quick-screenshot-capture/
 ├── manifest.json        # Configures the extension, permissions, and commands
 ├── background.js        # Handles extension activation and capture requests
@@ -63,7 +64,7 @@ quick-screenshot-capture/
 ├── icon16.png       # Extension icon (16x16)
 ├── icon48.png       # Extension icon (48x48)
 └── icon128.png      # Extension icon (128x128)
-
+```
 
 ## Permissions Used
 
