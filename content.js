@@ -8,7 +8,6 @@
         const existingPopup = document.getElementById('qs-capture-popup');
         if (existingPopup) existingPopup.remove();
         document.removeEventListener('keydown', handleGlobalEscKey);
-        // Make sure to remove click outside listener if it was somehow left active
         document.removeEventListener('click', handleClickOutsidePopupGlobal);
     }
     window.screenshotExtensionActive = true;
@@ -26,7 +25,7 @@
     let selectionBox = null;
     let startX, startY, isSelecting = false;
     let currentDevicePixelRatio = window.devicePixelRatio || 1;
-    let activePopup = null; // Keep track of the active popup
+    let activePopup = null;
 
     // --- Main Overlay and Initial Buttons ---
     function createOverlay() {
@@ -47,7 +46,6 @@
         overlay.appendChild(mainButtonsContainer);
         document.body.appendChild(overlay);
 
-        // Global keydown listener for Esc, active as long as any part of the extension UI is up
         document.addEventListener('keydown', handleGlobalEscKey);
     }
 
@@ -66,7 +64,7 @@
     }
 
     // --- Draggable Logic ---
-    function makeDraggable(popupElement) { // Renamed parameter for clarity
+    function makeDraggable(popupElement) {
         let offsetX, offsetY, isDragging = false;
 
         popupElement.addEventListener('mousedown', (e) => {
@@ -164,8 +162,11 @@
         const width = Math.abs(event.clientX - startX);
         const height = Math.abs(event.clientY - startY);
 
-        if (selectionBox) selectionBox.remove();
-        selectionBox = null;
+        // Remove selection box immediately as it's part of the overlay visual
+        if (selectionBox) {
+            selectionBox.remove();
+            selectionBox = null;
+        }
 
         if (width > 5 && height > 5) {
             const cropRect = {
@@ -175,19 +176,26 @@
                 height: height
             };
 
+            // Hide the main overlay
             if (overlay) {
                 overlay.style.display = 'none';
             }
 
-            chrome.runtime.sendMessage({
-                action: "captureVisibleTab",
-                cropRect: cropRect,
-                devicePixelRatio: currentDevicePixelRatio
-            });
+            // Add a small delay to ensure DOM update (overlay hidden) before capturing
+            setTimeout(() => {
+                chrome.runtime.sendMessage({
+                    action: "captureVisibleTab",
+                    cropRect: cropRect,
+                    devicePixelRatio: currentDevicePixelRatio
+                });
+            }, 100); // 100ms delay, can be adjusted
+
         } else {
+            // If selection was too small, and overlay was hidden, we might need to restore it or cleanup
             if (mainButtonsContainer && overlay && overlay.style.display !== 'none') {
-                 mainButtonsContainer.style.display = 'flex';
-            } else if (!overlay || overlay.style.display === 'none') {
+                 mainButtonsContainer.style.display = 'flex'; // Restore buttons if overlay still visible
+            } else {
+                // If overlay was hidden or selection was too small, cleanup to reset state
                 cleanup();
             }
         }
@@ -199,10 +207,13 @@
             overlay.style.display = 'none';
         }
 
-        chrome.runtime.sendMessage({
-             action: "captureVisibleTab",
-             devicePixelRatio: currentDevicePixelRatio
-        });
+        // Add a small delay for full page capture as well, for consistency and safety
+        setTimeout(() => {
+            chrome.runtime.sendMessage({
+                 action: "captureVisibleTab",
+                 devicePixelRatio: currentDevicePixelRatio
+            });
+        }, 100); // 100ms delay
     }
 
     // --- Process Captured Image (received from background.js) ---
@@ -251,10 +262,9 @@
              overlay.style.display = 'none';
         }
 
-        // Remove any existing popup before creating a new one
         if(activePopup) activePopup.remove();
 
-        activePopup = document.createElement('div'); // Assign to activePopup
+        activePopup = document.createElement('div');
         activePopup.id = 'qs-capture-popup';
 
         const previewImage = document.createElement('img');
@@ -281,22 +291,18 @@
 
         makeDraggable(activePopup);
 
-        // Add listener for clicks outside the popup
-        // Use a named function for easy removal
-        setTimeout(() => { // Add a slight delay to prevent immediate closing if click triggered this
+        setTimeout(() => {
             document.addEventListener('click', handleClickOutsidePopupGlobal, { capture: true });
         }, 0);
     }
 
-    // Named function to handle clicks outside the popup
     function handleClickOutsidePopupGlobal(event) {
         if (activePopup && !activePopup.contains(event.target)) {
             cleanup();
         }
     }
 
-
-    async function copyImageToClipboard(imageDataUrl, popupElement) { // Renamed parameter
+    async function copyImageToClipboard(imageDataUrl, popupElement) {
         const messageEl = popupElement.querySelector('#qs-popup-message');
         try {
             const blob = await dataURLtoBlob(imageDataUrl);
@@ -304,7 +310,7 @@
                 new ClipboardItem({ [blob.type]: blob })
             ]);
             if (messageEl) messageEl.textContent = 'Copied to clipboard!';
-            setTimeout(cleanup, 1500); // Cleanup after success
+            setTimeout(cleanup, 1500);
         } catch (err) {
             console.error('Quick Screenshot: Failed to copy image to clipboard:', err);
             if (messageEl) messageEl.textContent = 'Copy failed. Try saving.';
@@ -322,26 +328,25 @@
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        cleanup(); // Cleanup after saving
+        cleanup();
     }
 
     // --- Cleanup ---
     function cleanup() {
         if (selectionBox) selectionBox.remove();
         if (overlay) overlay.remove();
-        if (activePopup) activePopup.remove(); // Remove the active popup
+        if (activePopup) activePopup.remove();
 
-        document.removeEventListener('mousemove', handleMouseMove); // Though these are more specific to selection
-        document.removeEventListener('mouseup', handleMouseUp);     // it's good to be thorough
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
 
-        // Always remove global listeners during cleanup
         document.removeEventListener('keydown', handleGlobalEscKey);
         document.removeEventListener('click', handleClickOutsidePopupGlobal, { capture: true });
 
         selectionBox = null;
         overlay = null;
         mainButtonsContainer = null;
-        activePopup = null; // Reset active popup
+        activePopup = null;
         isSelecting = false;
         window.screenshotExtensionActive = false;
     }
