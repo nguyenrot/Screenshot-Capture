@@ -40,9 +40,12 @@
 
         const selectAreaButton = createButton("Select Area", ICONS.selectArea, handleSelectAreaClick);
         const captureFullPageButton = createButton("Capture Full Page", ICONS.captureFullPage, handleCaptureFullPageClick);
+        // Add Record Screen button
+        const recordScreenButton = createButton("Record Screen", ICONS.recordScreen || '<svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#e74c3c"/></svg>', handleRecordScreenClick);
 
         mainButtonsContainer.appendChild(selectAreaButton);
         mainButtonsContainer.appendChild(captureFullPageButton);
+        mainButtonsContainer.appendChild(recordScreenButton);
         overlay.appendChild(mainButtonsContainer);
         document.body.appendChild(overlay);
 
@@ -214,6 +217,99 @@
                  devicePixelRatio: currentDevicePixelRatio
             });
         }, 100); // 100ms delay
+    }
+
+    // --- Screen Recording Logic ---
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let isRecording = false;
+
+    async function handleRecordScreenClick() {
+        if (isRecording) {
+            // Stop recording
+            mediaRecorder.stop();
+            isRecording = false;
+            return;
+        }
+        try {
+            // Hide overlay and main buttons while recording
+            if (mainButtonsContainer) mainButtonsContainer.style.display = 'none';
+            if (overlay) overlay.style.display = 'none';
+            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+            recordedChunks = [];
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) recordedChunks.push(e.data);
+            };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                showVideoPreviewPopup(url, blob);
+            };
+            mediaRecorder.start();
+            isRecording = true;
+        } catch (err) {
+            alert('Screen recording failed: ' + err.message);
+        }
+    }
+
+    // --- Video Preview Popup ---
+    function showVideoPreviewPopup(videoUrl, videoBlob) {
+        if (activePopup) activePopup.remove();
+        activePopup = document.createElement('div');
+        activePopup.id = 'qs-capture-popup';
+        activePopup.style.zIndex = 2147483647;
+        activePopup.style.position = 'fixed';
+        activePopup.style.top = '50%';
+        activePopup.style.left = '50%';
+        activePopup.style.transform = 'translate(-50%, -50%)';
+        activePopup.style.background = '#fff';
+        activePopup.style.padding = '20px';
+        activePopup.style.borderRadius = '8px';
+        activePopup.style.boxShadow = '0 2px 16px rgba(0,0,0,0.2)';
+        activePopup.style.display = 'flex';
+        activePopup.style.flexDirection = 'column';
+        activePopup.style.alignItems = 'center';
+        activePopup.style.width = '60vw';
+        activePopup.style.maxWidth = '900px';
+        activePopup.style.height = 'auto';
+
+        const video = document.createElement('video');
+        video.src = videoUrl;
+        video.controls = true;
+        video.style.width = '100%';
+        video.style.height = 'auto';
+        video.style.maxHeight = '70vh';
+        video.style.marginBottom = '16px';
+        activePopup.appendChild(video);
+
+        const actions = document.createElement('div');
+        actions.style.display = 'flex';
+        actions.style.gap = '12px';
+
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'qs-button';
+        downloadBtn.textContent = 'Download';
+        downloadBtn.onclick = () => {
+            const a = document.createElement('a');
+            a.href = videoUrl;
+            a.download = 'screen-recording.webm';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(videoUrl);
+            }, 100);
+            cleanup();
+        };
+        actions.appendChild(downloadBtn);
+
+        activePopup.appendChild(actions);
+        document.body.appendChild(activePopup);
+        makeDraggable(activePopup);
+        setTimeout(() => {
+            document.addEventListener('click', handleClickOutsidePopupGlobal, { capture: true });
+        }, 0);
     }
 
     // --- Process Captured Image (received from background.js) ---
