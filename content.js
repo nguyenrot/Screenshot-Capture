@@ -244,7 +244,18 @@
             mediaRecorder.onstop = () => {
                 const blob = new Blob(recordedChunks, { type: 'video/webm' });
                 const url = URL.createObjectURL(blob);
-                showVideoPreviewPopup(url, blob);
+                // Auto download
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'screen-recording.webm';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                }, 100);
+                // Auto close extension UI after download
+                cleanup();
             };
             mediaRecorder.start();
             isRecording = true;
