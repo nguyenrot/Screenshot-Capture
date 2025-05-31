@@ -28,6 +28,20 @@
     let activePopup = null;
 
     // --- Main Overlay and Initial Buttons ---
+    function handleGlobalEscKey(e) {
+        if (e.key === 'Escape') {
+            // Remove overlay and popup if present
+            const existingOverlay = document.getElementById('qs-overlay');
+            if (existingOverlay) existingOverlay.remove();
+            const existingPopup = document.getElementById('qs-capture-popup');
+            if (existingPopup) existingPopup.remove();
+            // Remove event listeners
+            document.removeEventListener('keydown', handleGlobalEscKey);
+            document.removeEventListener('click', handleClickOutsidePopupGlobal);
+            window.screenshotExtensionActive = false;
+        }
+    }
+
     function createOverlay() {
         if (document.getElementById('qs-overlay')) return;
 
@@ -49,6 +63,7 @@
         overlay.appendChild(mainButtonsContainer);
         document.body.appendChild(overlay);
 
+        // Add ESC key listener when overlay is shown
         document.addEventListener('keydown', handleGlobalEscKey);
     }
 
@@ -58,12 +73,6 @@
         button.innerHTML = `${svgIcon}<span>${text}</span>`;
         button.addEventListener('click', onClick);
         return button;
-    }
-
-    function handleGlobalEscKey(event) {
-        if (event.key === 'Escape') {
-            cleanup();
-        }
     }
 
     // --- Draggable Logic ---
@@ -196,7 +205,7 @@
         } else {
             // If selection was too small, and overlay was hidden, we might need to restore it or cleanup
             if (mainButtonsContainer && overlay && overlay.style.display !== 'none') {
-                 mainButtonsContainer.style.display = 'flex'; // Restore buttons if overlay still visible
+                mainButtonsContainer.style.display = 'flex'; // Restore buttons if overlay still visible
             } else {
                 // If overlay was hidden or selection was too small, cleanup to reset state
                 cleanup();
@@ -213,8 +222,8 @@
         // Add a small delay for full page capture as well, for consistency and safety
         setTimeout(() => {
             chrome.runtime.sendMessage({
-                 action: "captureVisibleTab",
-                 devicePixelRatio: currentDevicePixelRatio
+                action: "captureVisibleTab",
+                devicePixelRatio: currentDevicePixelRatio
             });
         }, 100); // 100ms delay
     }
@@ -328,13 +337,19 @@
         const img = new Image();
         img.onload = () => {
             let finalDataUrl = dataUrl;
+            let originalWidth, originalHeight;
+
             if (cropRect && cropRect.width > 0 && cropRect.height > 0) {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 const dpr = devicePixelRatio || currentDevicePixelRatio;
 
-                canvas.width = cropRect.width * dpr;
-                canvas.height = cropRect.height * dpr;
+                // These are the real pixel dimensions of the final cropped image
+                originalWidth = cropRect.width * dpr;
+                originalHeight = cropRect.height * dpr;
+
+                canvas.width = originalWidth;
+                canvas.height = originalHeight;
 
                 ctx.drawImage(
                     img,
@@ -346,9 +361,12 @@
                     canvas.width, canvas.height
                 );
                 finalDataUrl = canvas.toDataURL('image/png');
-                showCapturePopup(finalDataUrl, 'selected_area.png');
+                showCapturePopup(finalDataUrl, 'selected_area.png', canvas.width, canvas.height);
             } else {
-                showCapturePopup(finalDataUrl, 'full_page_screenshot.png');
+                // For full page, the image is already at the correct size
+                originalWidth = img.width;
+                originalHeight = img.height;
+                showCapturePopup(finalDataUrl, 'full_page_screenshot.png', originalWidth, originalHeight);
             }
         };
         img.onerror = () => {
@@ -364,9 +382,9 @@
     }
 
     // --- Capture Popup (Preview/Copy/Save) ---
-    function showCapturePopup(imageDataUrl, filename) {
+    function showCapturePopup(imageDataUrl, filename, originalWidth, originalHeight) {
         if (overlay && overlay.style.display !== 'none') {
-             overlay.style.display = 'none';
+            overlay.style.display = 'none';
         }
 
         if(activePopup) activePopup.remove();
@@ -374,11 +392,36 @@
         activePopup = document.createElement('div');
         activePopup.id = 'qs-capture-popup';
 
+        // Add ESC key listener for popup
+        document.addEventListener('keydown', handleGlobalEscKey);
+
         const previewImage = document.createElement('img');
         previewImage.id = 'qs-preview-image';
         previewImage.src = imageDataUrl;
         previewImage.ondragstart = () => false;
+
+        // --- SIZING LOGIC ---
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        if (originalWidth > viewportWidth * 0.8 || originalHeight > viewportHeight * 0.8) {
+            // If image is large, constrain it to 80% of the viewport
+            previewImage.style.maxWidth = '80vw';
+            previewImage.style.maxHeight = '80vh';
+        } else {
+            // If image is smaller, show it at its actual size
+            previewImage.style.width = `${originalWidth}px`;
+            previewImage.style.height = `${originalHeight}px`;
+            previewImage.style.maxWidth = 'none'; // Override CSS to prevent unwanted scaling
+            previewImage.style.maxHeight = 'none'; // Override CSS to prevent unwanted scaling
+        }
         activePopup.appendChild(previewImage);
+
+        // --- DIMENSIONS DISPLAY ---
+        const dimensionsDisplay = document.createElement('div');
+        dimensionsDisplay.id = 'qs-dimensions-display';
+        dimensionsDisplay.textContent = `${originalWidth} x ${originalHeight}px`;
+        activePopup.appendChild(dimensionsDisplay);
 
         const actionsContainer = document.createElement('div');
         actionsContainer.id = 'qs-popup-actions';
@@ -486,3 +529,4 @@
     });
 
 })();
+
