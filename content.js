@@ -390,7 +390,7 @@
 
         activePopup = document.createElement('div');
         activePopup.id = 'qs-capture-popup';
-        // Make popup fixed and not draggable
+        // Center popup in the current visible viewport (not the page)
         activePopup.style.position = 'fixed';
         activePopup.style.top = '50%';
         activePopup.style.left = '50%';
@@ -430,6 +430,352 @@
         }
         activePopup.appendChild(previewImage);
 
+        // --- DRAWING TOOLBAR & CANVAS ---
+        // Toolbar container
+        const toolbar = document.createElement('div');
+        toolbar.style.display = 'flex';
+        toolbar.style.gap = '10px';
+        toolbar.style.margin = '10px 0';
+        toolbar.style.alignItems = 'center';
+
+        // Tool selection styled as action buttons with SVG icons
+        const tools = [
+            { name: 'Free', icon: '<svg width="20" height="20" viewBox="0 0 20 20"><path d="M3 17c2-2 5-6 7-6s3 2 5 2 2-2 2-2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>' },
+            { name: 'Rectangle', icon: '<svg width="20" height="20" viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"/></svg>' },
+            { name: 'Circle', icon: '<svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="2" fill="none"/></svg>' },
+            { name: 'Arrow', icon: '<svg width="20" height="20" viewBox="0 0 20 20"><line x1="4" y1="16" x2="16" y2="4" stroke="currentColor" stroke-width="2"/><polyline points="10,4 16,4 16,10" fill="none" stroke="currentColor" stroke-width="2"/></svg>' }
+        ];
+        let currentTool = 'Free';
+        const toolButtonGroup = document.createElement('div');
+        toolButtonGroup.style.display = 'flex';
+        toolButtonGroup.style.gap = '6px';
+        tools.forEach(tool => {
+            const btn = document.createElement('button');
+            btn.innerHTML = tool.icon;
+            btn.title = tool.name;
+            btn.className = 'qs-button';
+            btn.style.display = 'flex';
+            btn.style.alignItems = 'center';
+            btn.style.justifyContent = 'center';
+            btn.style.width = '32px';
+            btn.style.height = '32px';
+            btn.style.minWidth = '32px';
+            btn.style.minHeight = '32px';
+            btn.style.maxWidth = '32px';
+            btn.style.maxHeight = '32px';
+            btn.style.padding = '0';
+            btn.style.fontSize = '18px';
+            btn.style.background = '';
+            btn.style.border = '';
+            btn.style.margin = '0';
+            btn.onclick = () => {
+                currentTool = tool.name;
+                Array.from(toolButtonGroup.children).forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            };
+            if (tool.name === 'Free') btn.classList.add('active');
+            toolButtonGroup.appendChild(btn);
+        });
+        toolbar.appendChild(toolButtonGroup);
+
+        // Undo/Redo buttons
+        const undoBtn = document.createElement('button');
+        undoBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20"><path d="M9 4H5V0L0 5l5 5V6h4a5 5 0 1 1 0 10h-1v2h1a7 7 0 1 0 0-14z" fill="currentColor"/></svg>';
+        undoBtn.title = 'Undo';
+        undoBtn.className = 'qs-button';
+        undoBtn.style.width = '28px';
+        undoBtn.style.height = '28px';
+        undoBtn.style.minWidth = '28px';
+        undoBtn.style.minHeight = '28px';
+        undoBtn.style.maxWidth = '28px';
+        undoBtn.style.maxHeight = '28px';
+        undoBtn.style.padding = '0';
+        undoBtn.style.display = 'flex';
+        undoBtn.style.alignItems = 'center';
+        undoBtn.style.justifyContent = 'center';
+
+        const redoBtn = document.createElement('button');
+        redoBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20"><path d="M11 4h4V0l5 5-5 5V6h-4a5 5 0 1 0 0 10h1v2h-1a7 7 0 1 1 0-14z" fill="currentColor"/></svg>';
+        redoBtn.title = 'Redo';
+        redoBtn.className = 'qs-button';
+        redoBtn.style.width = '28px';
+        redoBtn.style.height = '28px';
+        redoBtn.style.minWidth = '28px';
+        redoBtn.style.minHeight = '28px';
+        redoBtn.style.maxWidth = '28px';
+        redoBtn.style.maxHeight = '28px';
+        redoBtn.style.padding = '0';
+        redoBtn.style.display = 'flex';
+        redoBtn.style.alignItems = 'center';
+        redoBtn.style.justifyContent = 'center';
+
+        // Move Undo/Redo buttons after tool buttons
+        toolbar.appendChild(undoBtn);
+        toolbar.appendChild(redoBtn);
+
+        // Color picker
+        const colorInput = document.createElement('input');
+        colorInput.type = 'color';
+        colorInput.value = '#ff0000';
+        colorInput.title = 'Stroke Color';
+        toolbar.appendChild(colorInput);
+
+        // Thickness selector
+        const thicknessInput = document.createElement('input');
+        thicknessInput.type = 'range';
+        thicknessInput.min = 1;
+        thicknessInput.max = 15;
+        thicknessInput.value = 3;
+        thicknessInput.title = 'Stroke Thickness';
+        toolbar.appendChild(thicknessInput);
+
+        activePopup.appendChild(toolbar);
+
+        // Drawing canvas
+        const drawCanvas = document.createElement('canvas');
+        drawCanvas.width = originalWidth;
+        drawCanvas.height = originalHeight;
+        drawCanvas.style.position = 'absolute';
+        drawCanvas.style.left = previewImage.style.left || '0';
+        drawCanvas.style.top = previewImage.style.top || '0';
+        drawCanvas.style.pointerEvents = 'auto';
+        drawCanvas.style.zIndex = '2147483648';
+        drawCanvas.style.borderRadius = '8px';
+        drawCanvas.style.maxWidth = previewImage.style.maxWidth || '70vw';
+        drawCanvas.style.maxHeight = previewImage.style.maxHeight || '70vh';
+        drawCanvas.style.width = previewImage.style.width || '';
+        drawCanvas.style.height = previewImage.style.height || '';
+        drawCanvas.style.background = 'transparent';
+        drawCanvas.style.cursor = 'crosshair';
+        drawCanvas.style.userSelect = 'none';
+        drawCanvas.style.display = 'block';
+        drawCanvas.width = originalWidth;
+        drawCanvas.height = originalHeight;
+        // Do NOT set activePopup.style.position = 'relative' here, keep it fixed for viewport centering
+        previewImage.style.position = 'relative';
+        activePopup.appendChild(drawCanvas);
+
+        // Drawing logic
+        let drawing = false, startX = 0, startY = 0, lastX = 0, lastY = 0;
+        let tempCanvas = document.createElement('canvas');
+        tempCanvas.width = drawCanvas.width;
+        tempCanvas.height = drawCanvas.height;
+        let tempCtx = tempCanvas.getContext('2d');
+        const ctx = drawCanvas.getContext('2d');
+        let color = colorInput.value;
+        let thickness = parseInt(thicknessInput.value);
+
+        // --- Undo/Redo logic ---
+        let undoStack = [];
+        let redoStack = [];
+        function pushUndo() {
+            // Save both tempCanvas and drawCanvas as a merged image
+            const merged = document.createElement('canvas');
+            merged.width = drawCanvas.width;
+            merged.height = drawCanvas.height;
+            const mctx = merged.getContext('2d');
+            mctx.drawImage(tempCanvas, 0, 0);
+            mctx.drawImage(drawCanvas, 0, 0);
+            const dataUrl = merged.toDataURL();
+            // Only push if not the same as the last state
+            if (undoStack.length === 0 || undoStack[undoStack.length - 1] !== dataUrl) {
+                undoStack.push(dataUrl);
+                if (undoStack.length > 50) undoStack.shift();
+            }
+            redoStack = [];
+        }
+        function restoreFromDataUrl(dataUrl) {
+            const img = new Image();
+            img.onload = function() {
+                tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+                tempCtx.drawImage(img, 0, 0);
+                ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+                ctx.drawImage(tempCanvas, 0, 0);
+            };
+            img.src = dataUrl;
+        }
+        function doUndo() {
+            if (undoStack.length <= 1) return;
+            redoStack.push(undoStack.pop());
+            restoreFromDataUrl(undoStack[undoStack.length - 1]);
+        }
+        function doRedo() {
+            if (redoStack.length === 0) return;
+            const dataUrl = redoStack.pop();
+            undoStack.push(dataUrl);
+            restoreFromDataUrl(dataUrl);
+        }
+        undoBtn.onclick = doUndo;
+        redoBtn.onclick = doRedo;
+
+        // Save initial blank state for undo
+        function saveInitialBlankState() {
+            const blank = document.createElement('canvas');
+            blank.width = drawCanvas.width;
+            blank.height = drawCanvas.height;
+            undoStack = [blank.toDataURL()];
+            redoStack = [];
+        }
+        saveInitialBlankState();
+
+        colorInput.oninput = () => color = colorInput.value;
+        thicknessInput.oninput = () => thickness = parseInt(thicknessInput.value);
+
+        function drawArrow(ctx, x1, y1, x2, y2, color, thickness) {
+            const headlen = 15 + thickness * 1.5;
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const angle = Math.atan2(dy, dx);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = thickness;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x2, y2);
+            ctx.lineTo(x2 - headlen * Math.cos(angle - Math.PI / 6), y2 - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(x2 - headlen * Math.cos(angle + Math.PI / 6), y2 - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.lineTo(x2, y2);
+            ctx.lineTo(x2 - headlen * Math.cos(angle - Math.PI / 6), y2 - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.stroke();
+        }
+
+        function redrawTemp() {
+            ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            ctx.drawImage(tempCanvas, 0, 0);
+        }
+
+        drawCanvas.onmousedown = e => {
+            drawing = true;
+            const rect = drawCanvas.getBoundingClientRect();
+            startX = lastX = (e.clientX - rect.left) * (drawCanvas.width / rect.width);
+            startY = lastY = (e.clientY - rect.top) * (drawCanvas.height / rect.height);
+            if (currentTool === 'Free') {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = thickness;
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+            }
+        };
+        drawCanvas.onmousemove = e => {
+            if (!drawing) return;
+            const rect = drawCanvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (drawCanvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (drawCanvas.height / rect.height);
+            redrawTemp();
+            if (currentTool === 'Free') {
+                ctx.lineTo(x, y);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = thickness;
+                ctx.stroke();
+                lastX = x; lastY = y;
+            } else if (currentTool === 'Rectangle') {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = thickness;
+                ctx.strokeRect(startX, startY, x - startX, y - startY);
+            } else if (currentTool === 'Circle') {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = thickness;
+                ctx.beginPath();
+                const radius = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
+                ctx.arc(startX, startY, radius, 0, 2 * Math.PI);
+                ctx.stroke();
+            } else if (currentTool === 'Arrow') {
+                drawArrow(ctx, startX, startY, x, y, color, thickness);
+            }
+        };
+        drawCanvas.onmouseup = e => {
+            if (!drawing) return;
+            drawing = false;
+            const rect = drawCanvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (drawCanvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (drawCanvas.height / rect.height);
+            if (currentTool === 'Free') {
+                ctx.lineTo(x, y);
+                ctx.stroke();
+                ctx.closePath();
+                tempCtx.drawImage(drawCanvas, 0, 0);
+            } else if (currentTool === 'Rectangle') {
+                tempCtx.strokeStyle = color;
+                tempCtx.lineWidth = thickness;
+                tempCtx.strokeRect(startX, startY, x - startX, y - startY);
+                redrawTemp();
+            } else if (currentTool === 'Circle') {
+                tempCtx.strokeStyle = color;
+                tempCtx.lineWidth = thickness;
+                tempCtx.beginPath();
+                const radius = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
+                tempCtx.arc(startX, startY, radius, 0, 2 * Math.PI);
+                tempCtx.stroke();
+                redrawTemp();
+            } else if (currentTool === 'Arrow') {
+                drawArrow(tempCtx, startX, startY, x, y, color, thickness);
+                redrawTemp();
+            }
+            // After drawing, push to undo stack
+            pushUndo();
+        };
+        drawCanvas.onmouseleave = () => { drawing = false; };
+
+        // Touch support
+        drawCanvas.ontouchstart = e => {
+            if (e.touches.length !== 1) return;
+            const rect = drawCanvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            startX = lastX = (touch.clientX - rect.left) * (drawCanvas.width / rect.width);
+            startY = lastY = (touch.clientY - rect.top) * (drawCanvas.height / rect.height);
+            drawing = true;
+            if (currentTool === 'Free') {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = thickness;
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+            }
+        };
+        drawCanvas.ontouchmove = e => {
+            if (!drawing || e.touches.length !== 1) return;
+            const rect = drawCanvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = (touch.clientX - rect.left) * (drawCanvas.width / rect.width);
+            const y = (touch.clientY - rect.top) * (drawCanvas.height / rect.height);
+            redrawTemp();
+            if (currentTool === 'Free') {
+                ctx.lineTo(x, y);
+                ctx.strokeStyle = color;
+                ctx.lineWidth = thickness;
+                ctx.stroke();
+                lastX = x; lastY = y;
+            } else if (currentTool === 'Rectangle') {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = thickness;
+                ctx.strokeRect(startX, startY, x - startX, y - startY);
+            } else if (currentTool === 'Circle') {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = thickness;
+                ctx.beginPath();
+                const radius = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
+                ctx.arc(startX, startY, radius, 0, 2 * Math.PI);
+                ctx.stroke();
+            } else if (currentTool === 'Arrow') {
+                drawArrow(ctx, startX, startY, x, y, color, thickness);
+            }
+            e.preventDefault();
+        };
+        drawCanvas.ontouchend = e => {
+            if (!drawing) return;
+            drawing = false;
+            if (currentTool === 'Free') {
+                ctx.closePath();
+                tempCtx.drawImage(drawCanvas, 0, 0);
+            } else if (currentTool === 'Rectangle' || currentTool === 'Circle' || currentTool === 'Arrow') {
+                tempCtx.drawImage(drawCanvas, 0, 0);
+            }
+            // After drawing, push to undo stack
+            pushUndo();
+        };
+        drawCanvas.ontouchcancel = () => { drawing = false; };
+
         // --- DIMENSIONS DISPLAY ---
         const dimensionsDisplay = document.createElement('div');
         dimensionsDisplay.id = 'qs-dimensions-display';
@@ -439,8 +785,27 @@
         const actionsContainer = document.createElement('div');
         actionsContainer.id = 'qs-popup-actions';
 
-        const copyButton = createButton("Copy", ICONS.copy, () => copyImageToClipboard(imageDataUrl, activePopup));
-        const saveButton = createButton("Save", ICONS.save, () => saveImage(imageDataUrl, filename));
+        // Helper to merge preview image and drawing canvas
+        function getMergedImageDataUrl() {
+            const merged = document.createElement('canvas');
+            merged.width = originalWidth;
+            merged.height = originalHeight;
+            const mctx = merged.getContext('2d');
+            // Draw the base image
+            mctx.drawImage(previewImage, 0, 0, originalWidth, originalHeight);
+            // Draw the drawing canvas
+            mctx.drawImage(drawCanvas, 0, 0);
+            return merged.toDataURL('image/png');
+        }
+
+        const copyButton = createButton("Copy", ICONS.copy, () => {
+            const mergedDataUrl = getMergedImageDataUrl();
+            copyImageToClipboard(mergedDataUrl, activePopup);
+        });
+        const saveButton = createButton("Save", ICONS.save, () => {
+            const mergedDataUrl = getMergedImageDataUrl();
+            saveImage(mergedDataUrl, filename);
+        });
 
         actionsContainer.appendChild(copyButton);
         actionsContainer.appendChild(saveButton);
