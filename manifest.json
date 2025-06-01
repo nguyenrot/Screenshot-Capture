@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Quick Screenshot Capture",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Capture full page, selected area screenshots and record tab with auto download. No preview, auto close after recording.",
   "permissions": [
       "activeTab",

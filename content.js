@@ -326,7 +326,6 @@
 
         activePopup.appendChild(actions);
         document.body.appendChild(activePopup);
-        makeDraggable(activePopup);
         setTimeout(() => {
             document.addEventListener('click', handleClickOutsidePopupGlobal, { capture: true });
         }, 0);
@@ -391,9 +390,23 @@
 
         activePopup = document.createElement('div');
         activePopup.id = 'qs-capture-popup';
-
-        // Add ESC key listener for popup
-        document.addEventListener('keydown', handleGlobalEscKey);
+        // Make popup fixed and not draggable
+        activePopup.style.position = 'fixed';
+        activePopup.style.top = '50%';
+        activePopup.style.left = '50%';
+        activePopup.style.transform = 'translate(-50%, -50%)';
+        activePopup.style.zIndex = '2147483647';
+        activePopup.style.boxShadow = '0 2px 16px rgba(0,0,0,0.25)';
+        activePopup.style.background = '#fff';
+        activePopup.style.borderRadius = '8px';
+        activePopup.style.padding = '20px 24px 16px 24px';
+        activePopup.style.display = 'flex';
+        activePopup.style.flexDirection = 'column';
+        activePopup.style.alignItems = 'center';
+        activePopup.style.userSelect = 'none';
+        activePopup.style.cursor = 'default';
+        // Remove any drag event listeners if present
+        activePopup.ondragstart = () => false;
 
         const previewImage = document.createElement('img');
         previewImage.id = 'qs-preview-image';
@@ -405,9 +418,9 @@
         const viewportHeight = window.innerHeight;
 
         if (originalWidth > viewportWidth * 0.8 || originalHeight > viewportHeight * 0.8) {
-            // If image is large, constrain it to 80% of the viewport
-            previewImage.style.maxWidth = '80vw';
-            previewImage.style.maxHeight = '80vh';
+            // If image is large, constrain it to 70% of the viewport
+            previewImage.style.maxWidth = '70vw';
+            previewImage.style.maxHeight = '70vh';
         } else {
             // If image is smaller, show it at its actual size
             previewImage.style.width = `${originalWidth}px`;
@@ -438,8 +451,6 @@
         activePopup.appendChild(message);
 
         document.body.appendChild(activePopup);
-
-        makeDraggable(activePopup);
 
         setTimeout(() => {
             document.addEventListener('click', handleClickOutsidePopupGlobal, { capture: true });
